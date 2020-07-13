@@ -1,9 +1,25 @@
-FROM debian:stretch
+# jemalloc Builder
+FROM buildpack-deps:stretch-scm as jemalloc
 
 RUN set -ex; \
-      apt-get update; \
-      apt-get -y install gpg openjdk-8-dbg libjemalloc-dev procps binutils graphviz libsnappy1v5 gettext-base wget; \
-      rm -rf /var/lib/apt/lists/*
+  apt-get update; \
+  apt-get -y install procps binutils bzip2 wget tar make gcc autoconf; \
+  rm -rf /var/lib/apt/lists/*;
+
+ENV JEMALLOC_VERSION=5.2.1
+
+RUN set -ex; \
+  wget -nv -O /tmp/jemalloc.tar.bz2 https://github.com/jemalloc/jemalloc/releases/download/${JEMALLOC_VERSION}/jemalloc-${JEMALLOC_VERSION}.tar.bz2; \
+  tar -xvf /tmp/jemalloc.tar.bz2; \
+  cd ./jemalloc-${JEMALLOC_VERSION} && ./autogen.sh && ./configure --enable-prof &&  make -j8 && make install; \
+  rm -rf /tmp/jemalloc.tar.bz2 ./jemalloc-${JEMALLOC_VERSION}
+
+FROM buildpack-deps:stretch-scm
+
+RUN set -ex; \
+  apt-get update; \
+  apt-get -y install gpg openjdk-8-dbg procps binutils graphviz libsnappy1v5 gettext-base wget libc6 libgcc1 libstdc++6; \
+  rm -rf /var/lib/apt/lists/*
 
 
 # Grab gosu for easy step-down from root
@@ -63,6 +79,10 @@ RUN set -ex; \
   rm flink.tgz; \
   \
   chown -R flink:flink .;
+
+# Install jemalloc
+COPY --from=jemalloc /usr/local/bin/jeprof /usr/local/bin/jeprof
+COPY --from=jemalloc /usr/local/lib/libjemalloc.so.2 /usr/local/lib/libjemalloc.so
 
 # Configure container
 COPY docker-entrypoint.sh /
